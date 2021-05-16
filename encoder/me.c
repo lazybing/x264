@@ -431,9 +431,9 @@ void x264_me_search_ref( x264_t *h, x264_me_t *m, int16_t (*mvc)[2], int i_mvc, 
 
             /* refine predictors */
             ucost1 = bcost;
-            DIA1_ITER( pmx, pmy );
+            DIA1_ITER( pmx, pmy ); //1. 小菱形搜索算法用于median MV, the small diamond search
             if( pmx | pmy )
-                DIA1_ITER( 0, 0 );
+                DIA1_ITER( 0, 0 ); //1. 小菱形搜索算法用于(0, 0), the small diamond search
 
             if( i_pixel == PIXEL_4x4 )
                 goto me_hex2;
@@ -449,16 +449,16 @@ void x264_me_search_ref( x264_t *h, x264_me_t *m, int16_t (*mvc)[2], int i_mvc, 
 #define SAD_THRESH(v) ( bcost < ( v >> pixel_size_shift[i_pixel] ) )
             if( bcost == ucost2 && SAD_THRESH(2000) )
             {
-                COST_MV_X4( 0,-2, -1,-1, 1,-1, -2,0 );
-                COST_MV_X4( 2, 0, -1, 1, 1, 1,  0,2 );
+                COST_MV_X4( 0,-2, -1,-1, 1,-1, -2,0 ); //2. 中菱形搜索算法，找出新的MBD, the middle diamond search point
+                COST_MV_X4( 2, 0, -1, 1, 1, 1,  0,2 ); //2. 中菱形搜索算法，找出新的MBD, the middle diamond search point
                 if( bcost == ucost1 && SAD_THRESH(500) )
                     break;
                 if( bcost == ucost2 )
                 {
                     int range = (i_me_range>>1) | 1;
-                    CROSS( 3, range, range );
-                    COST_MV_X4( -1,-2, 1,-2, -2,-1, 2,-1 );
-                    COST_MV_X4( -2, 1, 2, 1, -1, 2, 1, 2 );
+                    CROSS( 3, range, range ); //3. 对称的交叉搜索, symmetric cross search(radius 7)
+                    COST_MV_X4( -1,-2, 1,-2, -2,-1, 2,-1 ); //3. 六边形搜索，octagon search(radius 2)
+                    COST_MV_X4( -2, 1, 2, 1, -1, 2, 1, 2 ); //3. 六边形搜索，octagon search(radius 2)
                     if( bcost == ucost2 )
                         break;
                     cross_start = range + 2;
@@ -520,9 +520,9 @@ void x264_me_search_ref( x264_t *h, x264_me_t *m, int16_t (*mvc)[2], int i_mvc, 
 
             /* FIXME if the above DIA2/OCT2/CROSS found a new mv, it has not updated omx/omy.
              * we are still centered on the same place as the DIA2. is this desirable? */
-            CROSS( cross_start, i_me_range, i_me_range>>1 );
+            CROSS( cross_start, i_me_range, i_me_range>>1 ); //4. 非对称交叉搜索, an uneven cross search
 
-            COST_MV_X4( -2,-2, -2,2, 2,-2, 2,2 );
+            COST_MV_X4( -2,-2, -2,2, 2,-2, 2,2 ); //5. 5x5 search
 
             /* hexagon grid */
             omx = bmx; omy = bmy;
@@ -531,7 +531,7 @@ void x264_me_search_ref( x264_t *h, x264_me_t *m, int16_t (*mvc)[2], int i_mvc, 
             int i = 1;
             do
             {
-                static const int8_t hex4[16][2] = {
+                static const int8_t hex4[16][2] = { //5. 多六边形网格搜索, multi-hexagon-grid search
                     { 0,-4}, { 0, 4}, {-2,-3}, { 2,-3},
                     {-4,-2}, { 4,-2}, {-4,-1}, { 4,-1},
                     {-4, 0}, { 4, 0}, {-4, 1}, { 4, 1},
@@ -611,7 +611,7 @@ void x264_me_search_ref( x264_t *h, x264_me_t *m, int16_t (*mvc)[2], int i_mvc, 
                 }
             } while( ++i <= i_me_range>>2 );
             if( bmy <= mv_y_max && bmy >= mv_y_min && bmx <= mv_x_max && bmx >= mv_x_min )
-                goto me_hex2;
+                goto me_hex2;   //6. iterative hexagon search
             break;
         }
 
