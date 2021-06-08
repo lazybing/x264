@@ -229,28 +229,34 @@ static uint64_t rd_cost_subpart( x264_t *h, int i_lambda2, int i4, int i_pixel )
     return (i_ssd<<8) + i_bits;
 }
 
+//该函数的主要目的是计算在给定量化参数情况下，各种划分对应的率失真代价
 uint64_t x264_rd_cost_part( x264_t *h, int i_lambda2, int i4, int i_pixel )
 {
+    //i_ssd 用来记录失真，使用的是平方误差和。i_bits 记录码率
     uint64_t i_ssd, i_bits;
     int i8 = i4 >> 2;
 
+    //如果划分是 16*16, 直接调用 x264_rd_cost_mb
     if( i_pixel == PIXEL_16x16 )
     {
         int i_cost = rd_cost_mb( h, i_lambda2 );
         return i_cost;
     }
 
+    //如果划分比 8x8 更小，调用 x264_rd_cost_subpart
     if( i_pixel > PIXEL_8x8 )
         return rd_cost_subpart( h, i_lambda2, i4, i_pixel );
 
     h->mb.i_cbp_luma = 0;
 
+    //编码
     x264_macroblock_encode_p8x8( h, i8 );
     if( i_pixel == PIXEL_16x8 )
         x264_macroblock_encode_p8x8( h, i8+1 );
     if( i_pixel == PIXEL_8x16 )
         x264_macroblock_encode_p8x8( h, i8+2 );
 
+    //计算失真
     int ssd_x = 8*(i8&1);
     int ssd_y = 8*(i8>>1);
     i_ssd = ssd_plane( h, i_pixel, 0, ssd_x, ssd_y );
@@ -262,6 +268,7 @@ uint64_t x264_rd_cost_part( x264_t *h, int i_lambda2, int i4, int i_pixel )
         i_ssd += ((uint64_t)chroma_ssd * h->mb.i_chroma_lambda2_offset + 128) >> 8;
     }
 
+    //计算码率，如果打开 cabac 则用 cabac，否则使用 cavlc，i_lambda2 是率失真函数中的系数
     if( h->param.b_cabac )
     {
         x264_cabac_t cabac_tmp;
