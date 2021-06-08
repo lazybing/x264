@@ -165,13 +165,16 @@ static int rd_cost_mb( x264_t *h, int i_lambda2 )
     int i_bits;
     int type_bak = h->mb.i_type;
 
+    //编码
     x264_macroblock_encode( h );
 
     if( h->mb.b_deblock_rdo )
         x264_macroblock_deblock( h );
 
+    //计算 ssd
     i_ssd = ssd_mb( h );
 
+    //计算码率与 i_lambda2 相乘
     if( IS_SKIP( h->mb.i_type ) )
     {
         i_bits = (1 * i_lambda2 + 128) >> 8;
@@ -192,6 +195,7 @@ static int rd_cost_mb( x264_t *h, int i_lambda2 )
     h->mb.b_transform_8x8 = b_transform_bak;
     h->mb.i_type = type_bak;
 
+    //返回计算得到的代价与设定的最大代价中较小的那个
     return X264_MIN( i_ssd + i_bits, COST_MAX );
 }
 
