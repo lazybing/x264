@@ -2802,7 +2802,7 @@ static intptr_t slice_write( x264_t *h )
             if( !(i_mb_y & SLICE_MBAFF) && h->param.rc.i_vbv_buffer_size )
                 bitstream_backup( h, &bs_bak[BS_BAK_ROW_VBV], i_skip, 1 );
             if( !h->mb.b_reencode_mb )
-                fdec_filter_row( h, i_mb_y, 0 );
+                fdec_filter_row( h, i_mb_y, 0 ); //注释：filter 都是按行处理的，前面通过 i_mb_x == 0 来限制，每完成一行，做一次 fiter
         }
 
         if( back_up_bitstream )
@@ -2833,18 +2833,19 @@ static intptr_t slice_write( x264_t *h )
             h->mb.field[mb_xy] = MB_INTERLACED;
         }
 
-        /* load cache */
+        /* load cache *///将要编码宏块的周围宏块的信息读进来
         if( SLICE_MBAFF )
             x264_macroblock_cache_load_interlaced( h, i_mb_x, i_mb_y );
         else
             x264_macroblock_cache_load_progressive( h, i_mb_x, i_mb_y );
 
-        x264_macroblock_analyse( h );
+        x264_macroblock_analyse( h );//分析宏块，包括帧内预测模式分析和帧间运动估计
 
         /* encode this macroblock -> be careful it can change the mb type to P_SKIP if needed */
 reencode:
-        x264_macroblock_encode( h );
+        x264_macroblock_encode( h );//宏块编码，对残差进行 DCT 变换、量化等。
 
+        //熵编码:CABAC/CAVLC
         if( h->param.b_cabac )
         {
             if( mb_xy > h->sh.i_first_mb && !(SLICE_MBAFF && (i_mb_y&1)) )
@@ -2949,9 +2950,10 @@ reencode:
 cont:
         h->mb.b_reencode_mb = 0;
 
-        /* save cache */
+        /* save cache */ //保存当前宏块的信息，用于后续编码宏块的参考
         x264_macroblock_cache_save( h );
 
+        //码率控制
         if( x264_ratecontrol_mb( h, mb_size ) < 0 )
         {
             bitstream_restore( h, &bs_bak[BS_BAK_ROW_VBV], &i_skip, 1 );
