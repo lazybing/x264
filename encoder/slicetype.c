@@ -1742,6 +1742,23 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
 #endif
 }
 
+//1. 计算每一帧时长 duration
+//2. 对 lookahead 里的每一帧进行帧类型分析
+//   * two pass:x264_ratecontrol_slice_type()
+//   * one pass:x264_slicetype_analyse()
+//3. 对一段BBB...BBB(IDR/I/P)
+//  * 检查BREF是否合规
+//  * 检查keyframe，设置为openGOP?I:IDR
+//  * 检查是否超过了最大关键帧距离，控制 GOPSize，将当前帧设置为openGOP?I:IDR
+//  * 检查I帧，openGOP?I:IDR
+//  * 检查 IDR 帧，将前一帧 AUTO/B改为P
+//  * 检查是否超过两参考帧件最大允许的连续 B 帧数量，或是否 lookahead 最后一帧，AUTO/B->P
+//  * 检查剩下的 AUTO，AUTO=>B
+//4. 检查是否可以使用 BREF，将最中间的帧->BREF
+//5. 计算每个B帧的帧开销，计算最后一帧的 intra cost，若最后一帧为P，还要计算其 inter cost
+//6. 若使用P权重，加权P帧分析
+//7. 按照帧类型，重新组织这些帧，将播放顺序->编码顺序，即BBB BREF BBB (IDR/I/P)=>(IDR/I/P) BREF BBB
+//8. 重新计算 calculate_duration()
 void x264_slicetype_decide( x264_t *h )
 {
     x264_frame_t *frames[X264_BFRAME_MAX+2];
