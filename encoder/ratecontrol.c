@@ -2250,6 +2250,7 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
     {
         double fenc_cpb_duration = (double)h->fenc->i_cpb_duration *
                                    h->sps->vui.i_num_units_in_tick / h->sps->vui.i_time_scale;
+
         /* Lookahead VBV: raise the quantizer as necessary such that no frames in
          * the lookahead overflow and such that the buffer is in a reasonable state
          * by the end of the lookahead. */
@@ -2260,7 +2261,7 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
             /* Avoid an infinite loop. */
             for( int iterations = 0; iterations < 1000 && terminate != 3; iterations++ )
             {
-                double frame_q[3];
+                double frame_q[3]; //frame_q[3] 分别代表了 P、B、I 类型的 q 值
                 double cur_bits = predict_size( &rcc->pred[h->sh.i_type], q, rcc->last_satd );
                 double buffer_fill_cur = rcc->buffer_fill - cur_bits;
                 double target_fill;
@@ -2279,6 +2280,7 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
                     int i_satd = h->fenc->i_planned_satd[j];
                     if( i_type == X264_TYPE_AUTO )
                         break;
+                    //这里将 B_REF 和 B 等同起来了，理论上，这里是有优化空间的，对 B_REF 可以使用介于 B 和 P 之间的值
                     i_type = IS_X264_TYPE_I( i_type ) ? SLICE_TYPE_I : IS_X264_TYPE_B( i_type ) ? SLICE_TYPE_B : SLICE_TYPE_P;
                     cur_bits = predict_size( &rcc->pred[i_type], frame_q[i_type], i_satd );
                     buffer_fill_cur -= cur_bits;
@@ -2310,6 +2312,7 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
                 ( pict_type == SLICE_TYPE_I && rcc->last_non_b_pict_type == SLICE_TYPE_I ) ) &&
                 rcc->buffer_fill/rcc->buffer_size < 0.5 )
             {
+                //1. 对于 P 帧和第一个 I 帧，让当前编码完成后，缓存区至少还有一半容量
                 q /= x264_clip3f( 2.0*rcc->buffer_fill/rcc->buffer_size, 0.5, 1.0 );
             }
 
@@ -2321,22 +2324,27 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
             /* For single-frame VBVs, request that the frame use up the entire VBV. */
             double min_fill_factor = rcc->single_frame_vbv ? 1 : 2;
 
+            //2. 限制每帧大小不能超过当前缓存量的一半
             if( bits > rcc->buffer_fill/max_fill_factor )
             {
                 double qf = x264_clip3f( rcc->buffer_fill/(max_fill_factor*bits), 0.2, 1.0 );
                 q /= qf;
                 bits *= qf;
             }
+            //3. 限制每帧大小至少是 buffer_rate 的一半，buffer_rate = vbv-maxrate / fps
             if( bits < rcc->buffer_rate/min_fill_factor )
             {
                 double qf = x264_clip3f( bits*min_fill_factor/rcc->buffer_rate, 0.001, 1.0 );
                 q *= qf;
             }
+
+            //4. 限制 qscale 不能小于输入 qscale
             q = X264_MAX( q0, q );
         }
 
         /* Check B-frame complexity, and use up any bits that would
          * overflow before the next P-frame. */
+        //检查 B 帧复杂度，用掉到下一个 P 帧前，会溢出的比特。
         if( h->sh.i_type == SLICE_TYPE_P && !rcc->single_frame_vbv )
         {
             int nb = rcc->bframes;
@@ -2375,6 +2383,7 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
             q = X264_MAX( q0, q );
     }
 
+    //其实可以把 lmin ==lmax 的情况放到最前面，这样就可以直接返回 lmin，而不用这些冗余的运算了。
     if( lmin==lmax )
         return lmin;
     else if( rcc->b_2pass )
