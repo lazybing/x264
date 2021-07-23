@@ -2286,7 +2286,8 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
                     buffer_fill_cur -= cur_bits;
                     last_duration = h->fenc->f_planned_cpb_duration[j];
                 }
-                /* Try to get to get the buffer at least 50% filled, but don't set an impossible goal. */
+                /* Try to get the buffer at least 50% filled, but don't set an impossible goal. */
+                // 至少用掉填充数据的 50%
                 target_fill = X264_MIN( rcc->buffer_fill + total_duration * rcc->vbv_max_rate * 0.5, rcc->buffer_size * 0.5 );
                 if( buffer_fill_cur < target_fill )
                 {
@@ -2295,6 +2296,7 @@ static double clip_qscale( x264_t *h, int pict_type, double q )
                     continue;
                 }
                 /* Try to get the buffer no more than 80% filled, but don't set an impossible goal. */
+                // 最多用掉填充数据的 80%
                 target_fill = x264_clip3f( rcc->buffer_fill - total_duration * rcc->vbv_max_rate * 0.5, rcc->buffer_size * 0.8, rcc->buffer_size );
                 if( rcc->b_vbv_min_rate && buffer_fill_cur > target_fill )
                 {
