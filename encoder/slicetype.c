@@ -1519,6 +1519,7 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
         return;
     }
 
+    /*判断为场景切换时，设置为 I 帧*/
     if( IS_X264_TYPE_AUTO_OR_I( frames[1]->i_type ) &&
         h->param.i_scenecut_threshold && scenecut( h, &a, frames, 0, 1, 1, orig_num_frames, i_max_search ) )
     {
@@ -1532,6 +1533,7 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
 #endif
 
     /* Replace forced keyframes with I/IDR-frames */
+    /* 遍历 frames 列表中的所有帧，如果已经确定为关键帧(keyframe)，则根据是否为开GOP，设置为 I/IDR 类型 */
     for( int j = 1; j <= num_frames; j++ )
     {
         if( frames[j]->i_type == X264_TYPE_KEYFRAME )
@@ -1539,6 +1541,7 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
     }
 
     /* Close GOP at IDR-frames */
+    /* 列表中的IDR帧的前一帧，且前一帧为AUTO 或 B 帧，强制设置为一定为P帧。*/
     for( int j = 2; j <= num_frames; j++ )
     {
         if( frames[j]->i_type == X264_TYPE_IDR && IS_X264_TYPE_AUTO_OR_B( frames[j-1]->i_type ) )
@@ -1548,9 +1551,9 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
     int num_analysed_frames = num_frames;
     int reset_start;
 
-    if( h->param.i_bframe )
+    if( h->param.i_bframe ) //存在 B 帧情况下
     {
-        if( h->param.i_bframe_adaptive == X264_B_ADAPT_TRELLIS )
+        if( h->param.i_bframe_adaptive == X264_B_ADAPT_TRELLIS ) //使用 Viterbi/trellis 算法确定帧类型
         {
             if( num_frames > 1 )
             {
@@ -1577,7 +1580,7 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
                 }
             }
         }
-        else if( h->param.i_bframe_adaptive == X264_B_ADAPT_FAST )
+        else if( h->param.i_bframe_adaptive == X264_B_ADAPT_FAST ) 
         {
             int last_nonb = 0;
             int num_bframes = h->param.i_bframe;
@@ -1610,9 +1613,9 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
                 int bframes = j - last_nonb - 1;
                 memset( path, 'B', bframes );
                 strcpy( path+bframes, "PP" );
-                uint64_t cost_p = slicetype_path_cost( h, &a, frames+last_nonb, path, COST_MAX64 );
+                uint64_t cost_p = slicetype_path_cost( h, &a, frames+last_nonb, path, COST_MAX64 ); //P 帧编码代价
                 strcpy( path+bframes, "BP" );
-                uint64_t cost_b = slicetype_path_cost( h, &a, frames+last_nonb, path, cost_p );
+                uint64_t cost_b = slicetype_path_cost( h, &a, frames+last_nonb, path, cost_p ); //B 帧编码代价
 
                 if( cost_b < cost_p )
                     frames[j]->i_type = X264_TYPE_B;
@@ -1622,7 +1625,7 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
         }
         else
         {
-            int num_bframes = h->param.i_bframe;
+            int num_bframes = h->param.i_bframe;//两非 B 帧之间 B 帧的个数
             for( int j = 1; j < num_frames; j++ )
             {
                 if( !num_bframes )
@@ -1664,7 +1667,7 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
 
         reset_start = keyframe ? 1 : X264_MIN( num_bframes+2, num_analysed_frames+1 );
     }
-    else
+    else    //在无 B 帧存在情况下，不是 I 帧则全部为Ｐ帧
     {
         for( int j = 1; j <= num_frames; j++ )
             if( IS_X264_TYPE_AUTO_OR_B( frames[j]->i_type ) )
@@ -1677,8 +1680,8 @@ void x264_slicetype_analyse( x264_t *h, int intra_minigop )
     if( h->param.rc.b_mb_tree )
         macroblock_tree( h, &a, frames, X264_MIN(num_frames, h->param.i_keyint_max), keyframe );
 
-    /* Enforce keyframe limit. */
-    if( !h->param.b_intra_refresh )
+    /* Enforce keyframe limit. 强制关键帧限制*/
+    if( !h->param.b_intra_refresh ) //不使用周期帧内刷新代替　ＩＤＲ　帧条件下
     {
         int last_keyframe = h->lookahead->i_last_keyframe;
         int last_possible = 0;
