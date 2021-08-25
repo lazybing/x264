@@ -516,18 +516,25 @@ static void slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
                                int dist_scale_factor, int do_search[2], const x264_weight_t *w,
                                int *output_inter, int *output_intra )
 {
+    //p0 是前向参考帧索引
+    //p1 是后向参考帧索引
+    //b  是带编码的帧的索引
     x264_frame_t *fref0 = frames[p0];
     x264_frame_t *fref1 = frames[p1];
     x264_frame_t *fenc  = frames[b];
-    const int b_bidir = (b < p1);
-    const int i_mb_x = h->mb.i_mb_x;
+    const int b_bidir = (b < p1); //待编码的帧是否作为Ｂ帧来编码,如果预测编码的帧为Ｂ帧的编码代价，p1 != b　且　b < p1
+    const int i_mb_x = h->mb.i_mb_x;//获取预测宏块的x, y 坐标(以16x16宏块为单位)
     const int i_mb_y = h->mb.i_mb_y;
     const int i_mb_stride = h->mb.i_mb_width;
     const int i_mb_xy = i_mb_x + i_mb_y * i_mb_stride;
     const int i_stride = fenc->i_stride_lowres;
     const int i_pel_offset = 8 * (i_mb_x + i_mb_y * i_stride);
     const int i_bipred_weight = h->param.analyse.b_weighted_bipred ? 64 - (dist_scale_factor>>2) : 32;
+    //[0][b-p0-1]表示前向参考帧距的mv
+    //[1][p1-b-1]表示前后参考帧距的mv
     int16_t (*fenc_mvs[2])[2] = { b != p0 ? &fenc->lowres_mvs[0][b-p0-1][i_mb_xy] : NULL, b != p1 ? &fenc->lowres_mvs[1][p1-b-1][i_mb_xy] : NULL };
+    //[0][b-p0-1]表示前向参考帧距的mv cost
+    //[1][p1-b-1]表示前后参考帧距的mv cost
     int (*fenc_costs[2]) = { b != p0 ? &fenc->lowres_mv_costs[0][b-p0-1][i_mb_xy] : NULL, b != p1 ? &fenc->lowres_mv_costs[1][p1-b-1][i_mb_xy] : NULL };
     int b_frame_score_mb = (i_mb_x > 0 && i_mb_x < h->mb.i_mb_width - 1 &&
                             i_mb_y > 0 && i_mb_y < h->mb.i_mb_height - 1) ||
@@ -542,8 +549,11 @@ static void slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
     int lowres_penalty = 4;
 
     h->mb.pic.p_fenc[0] = h->mb.pic.fenc_buf;
+    //fenc->lowres[0],[1],[2],[3]分别对应整像素，水平1/2像素，垂直1/2像素，斜对角1/2像素平面
+    //将lowres orig 对应i_mb_x，i_mb_y宏块的宏块像素拷贝到h->mb.pic.p_fenc[0],是一个8x8像素块的拷贝
     h->mc.copy[PIXEL_8x8]( h->mb.pic.p_fenc[0], FENC_STRIDE, &fenc->lowres[0][i_pel_offset], i_stride, 8 );
 
+    //如果p0 == p1,那么待编码帧将被作 I 帧来编码
     if( p0 == p1 )
         goto lowres_intra_mb;
 
@@ -601,6 +611,8 @@ static void slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
                            m[0].p_fenc[0], FENC_STRIDE, pix1, 16 ); \
         COPY2_IF_LT( i_bcost, i_cost, list_used, 3 ); \
     }
+    //1/4像素预插值，依据mv0得到插值平面src1;依据mv1得到插值平面src2
+    //进行插值，并将插值结果保存在pix1
 
     m[0].i_pixel = PIXEL_8x8;
     m[0].p_cost_mv = a->p_cost_mv;
@@ -608,8 +620,12 @@ static void slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
     m[0].p_fenc[0] = h->mb.pic.p_fenc[0];
     m[0].weight = w;
     m[0].i_ref = 0;
+    //将前向参考帧的lowres orig,h,v,hv平面，对应i_mb_x、ｉ_mb_y宏块的lowres宏块地址
+    //分别赋值给m[0].p_fref[0],[1],[2],[3]
     LOAD_HPELS_LUMA( m[0].p_fref, fref0->lowres );
+    //将上述orig对应到i_mb_x、i_mb_y宏块的地址，赋给p_fref_w
     m[0].p_fref_w = m[0].p_fref[0];
+    //如果w[0].weightfn不为０，则将fenc->weighted[0] 对应i_mb_x,i_mb_y宏块的地址赋值给p_fref_w
     if( w[0].weightfn )
         LOAD_WPELS_LUMA( m[0].p_fref_w, fenc->weighted[0] );
 
@@ -623,12 +639,18 @@ static void slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
         m[1].p_fenc[0] = h->mb.pic.p_fenc[0];
         m[1].i_ref = 0;
         m[1].weight = x264_weight_none;
+        //将后向参考帧的lowres orig,h,v,hv平面对应i_mb_x,i_mb_y宏块的lowres宏块地址
+        //分别赋给m[m1].p_fref[0],[1],[2],[3]
         LOAD_HPELS_LUMA( m[1].p_fref, fref1->lowres );
+        //将m[1].pfref[0]，即lowres orig 地址赋值给m[1].p_fref_w
         m[1].p_fref_w = m[1].p_fref[0];
 
         if( fref1->lowres_mvs[0][p1-p0-1][0][0] != 0x7FFF )
         {
+            //mvr指向前后向参考帧距的宏块(i_mb_xy)的运动向量
             int16_t *mvr = fref1->lowres_mvs[0][p1-p0-1][i_mb_xy];
+            //dmv表示直接预测，直接预测就是采用对应参考图像宏块的mv，
+            //然后根据图像的poc距离得到的
             dmv[0][0] = ( mvr[0] * dist_scale_factor + 128 ) >> 8;
             dmv[0][1] = ( mvr[1] * dist_scale_factor + 128 ) >> 8;
             dmv[1][0] = dmv[0][0] - mvr[0];
@@ -645,7 +667,9 @@ static void slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
         if( M64( dmv ) )
         {
             int i_cost;
+            //在前向参考宏块，和后向参考宏块之间进行插值，h->mc.avg[PIXEL_8x8] = pixel_avg_8x8进行插值，并将插值结果保存在pix1
             h->mc.avg[PIXEL_8x8]( pix1, 16, m[0].p_fref[0], m[0].i_stride[0], m[1].p_fref[0], m[1].i_stride[0], i_bipred_weight );
+            //h->pixf.mbcmp[PIXEL_8x8] = x264_pixel_satd_8x8　求m[0].p_fenc[0]与插值宏块之间的satd
             i_cost = h->pixf.mbcmp[PIXEL_8x8]( m[0].p_fenc[0], FENC_STRIDE, pix1, 16 );
             COPY2_IF_LT( i_bcost, i_cost, list_used, 3 );
         }
@@ -683,6 +707,8 @@ static void slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
              * since anything else is likely to have enough residual to not trigger the skip. */
             if( !M32( m[l].mvp ) )
             {
+                //h->pixf.mbcmp[PIXEL_8x8] = x264_pixel_satd_8x8
+                //求(lowres)编码帧与其前向参考帧(lowres)之间的8x8宏块的satd
                 m[l].cost = h->pixf.mbcmp[PIXEL_8x8]( m[l].p_fenc[0], FENC_STRIDE, m[l].p_fref[0], m[l].i_stride[0] );
                 if( m[l].cost < 64 )
                 {
@@ -722,21 +748,31 @@ lowres_intra_mb:
         int pixoff = 4 / SIZEOF_PIXEL;
 
         /* Avoid store forwarding stalls by writing larger chunks */
+        //拷贝宏块的左、上、右上像素
         memcpy( pix-FDEC_STRIDE, src-i_stride, 16 * SIZEOF_PIXEL );
         for( int i = -1; i < 8; i++ )
             M32( &pix[i*FDEC_STRIDE-pixoff] ) = M32( &src[i*i_stride-pixoff] );
 
+        //做三次不同的预测，并与待编码帧进行预测求SATD
+        //将三个satd的结果保存在satds数组中
         h->pixf.intra_mbcmp_x3_8x8c( h->mb.pic.p_fenc[0], pix, satds );
+        //求其中最小的cost
         int i_icost = X264_MIN3( satds[0], satds[1], satds[2] );
 
         if( h->param.analyse.i_subpel_refine > 1 )
         {
+            //预测色度，色度平面预测法(4:2:0)
             h->predict_8x8c[I_PRED_CHROMA_P]( pix );
             int satd = h->pixf.mbcmp[PIXEL_8x8]( h->mb.pic.p_fenc[0], FENC_STRIDE, pix, FDEC_STRIDE );
+            //取小者
             i_icost = X264_MIN( i_icost, satd );
+
+            //h->predict_8x8_filter = x264_predict_8x8_filter_c
+            //从源宏块抽取出I0,...I7,t0,,,t15,并保存在edge
             h->predict_8x8_filter( pix, edge, ALL_NEIGHBORS, ALL_NEIGHBORS );
             for( int i = 3; i < 9; i++ )
             {
+                //用其他方法进行预测，求satd，取小者
                 h->predict_8x8[i]( pix, edge );
                 satd = h->pixf.mbcmp[PIXEL_8x8]( h->mb.pic.p_fenc[0], FENC_STRIDE, pix, FDEC_STRIDE );
                 i_icost = X264_MIN( i_icost, satd );
@@ -744,13 +780,16 @@ lowres_intra_mb:
         }
 
         i_icost = ((i_icost + intra_penalty) >> (BIT_DEPTH - 8)) + lowres_penalty;
+        //保存当前宏块的i_icost
         fenc->i_intra_cost[i_mb_xy] = i_icost;
         int i_icost_aq = i_icost;
         if( h->param.rc.i_aq_mode )
             i_icost_aq = (i_icost_aq * fenc->i_inv_qscale_factor[i_mb_xy] + 128) >> 8;
+        //保存到output_intra内存块
         output_intra[ROW_SATD] += i_icost_aq;
         if( b_frame_score_mb )
         {
+            //保存到est,est_aq
             output_intra[COST_EST] += i_icost;
             output_intra[COST_EST_AQ] += i_icost_aq;
         }
@@ -768,11 +807,13 @@ lowres_intra_mb:
             i_bcost = i_icost;
             list_used = 0;
         }
+        //统计右多少个intra_mb编码模式
         if( b_frame_score_mb )
             output_inter[INTRA_MBS] += b_intra;
     }
 
     /* In an I-frame, we've already added the results above in the intra section. */
+    //统计非Ｉ帧数据
     if( p0 != p1 )
     {
         int i_bcost_aq = i_bcost;
@@ -787,6 +828,7 @@ lowres_intra_mb:
         }
     }
 
+    //保存最小代价
     fenc->lowres_costs[b-p0][p1-b][i_mb_xy] = X264_MIN( i_bcost, LOWRES_COST_MASK ) + (list_used << LOWRES_COST_SHIFT);
 }
 #undef TRY_BIDIR
@@ -1346,6 +1388,7 @@ static void slicetype_path( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **fra
         memcpy( paths[idx], best_paths[len % (X264_BFRAME_MAX+1)], len );
         memset( paths[idx]+len, 'B', path );
         strcpy( paths[idx]+len+path, "P" );
+        //printf("length i_bframe <%d %d> len path <%d %d>\n", length, h->param.i_bframe, len, path);
 
         int possible = 1;
         for( int i = 1; i <= length; i++ )
@@ -1381,27 +1424,34 @@ static void slicetype_path( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **fra
     memcpy( best_paths[length % (X264_BFRAME_MAX+1)], paths[idx^1], length );
 }
 
+//只判断p1相对于p0是否是两幅不同的场景
+//若是不同的场景，就返回１，否则返回０
+//
+//分别计算p1作为Ｉ帧的开销intra_cost和p1作为p帧以p0为参考帧时的开销inter_cost
+//若inter_cost >= (1.0 - f_bias)*intra_cost,则认定p1相对于p0是不同的场景
 static int scenecut_internal( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **frames, int p0, int p1, int real_scenecut )
 {
-    x264_frame_t *frame = frames[p1];
+    x264_frame_t *frame = frames[p1];//取p1帧
 
     /* Don't do scenecuts on the right view of a frame-packed video. */
     if( real_scenecut && h->param.i_frame_packing == 5 && (frame->i_frame&1) )
         return 0;
 
-    slicetype_frame_cost( h, a, frames, p0, p1, p1 );
+    slicetype_frame_cost( h, a, frames, p0, p1, p1 );//计算当前帧作为Ｐ帧的开销
 
-    int icost = frame->i_cost_est[0][0];
-    int pcost = frame->i_cost_est[p1-p0][0];
+    int icost = frame->i_cost_est[0][0];//得到帧内预测的开销
+    int pcost = frame->i_cost_est[p1-p0][0];//得到帧间预测的开销
     float f_bias;
-    int i_gop_size = frame->i_frame - h->lookahead->i_last_keyframe;
-    float f_thresh_max = h->param.i_scenecut_threshold / 100.0;
+    int i_gop_size = frame->i_frame - h->lookahead->i_last_keyframe;//得到GOP的大小，即当前帧-上一个关键帧
+    float f_thresh_max = h->param.i_scenecut_threshold / 100.0;//得到场景切换的阈值，即max
     /* magic numbers pulled out of thin air */
-    float f_thresh_min = f_thresh_max * 0.25;
+    float f_thresh_min = f_thresh_max * 0.25;//得到场景切换阈值的最小值，即min=max*0.25
     int res;
 
-    if( h->param.i_keyint_min == h->param.i_keyint_max )
-        f_thresh_min = f_thresh_max;
+    if( h->param.i_keyint_min == h->param.i_keyint_max )//若关键帧之间的最大最小距离相等，即为一个定值
+        f_thresh_min = f_thresh_max;//则最大最小场景切换阈值为定值=max
+
+    //根据当前帧距离上一个关键帧的距离来计算f_bias
     if( i_gop_size <= h->param.i_keyint_min / 4 || h->param.b_intra_refresh )
         f_bias = f_thresh_min / 4;
     else if( i_gop_size <= h->param.i_keyint_min )
@@ -1414,6 +1464,7 @@ static int scenecut_internal( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **f
                  / ( h->param.i_keyint_max - h->param.i_keyint_min );
     }
 
+    //作为Ｐ帧的开销>=(1.0 - f_bias)×作为Ｉ帧的开销
     res = pcost >= (1.0 - f_bias) * icost;
     if( res && real_scenecut )
     {
@@ -1430,11 +1481,11 @@ static int scenecut_internal( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **f
 static int scenecut( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **frames, int p0, int p1, int real_scenecut, int num_frames, int i_max_search )
 {
     /* Only do analysis during a normal scenecut check. */
-    if( real_scenecut && h->param.i_bframe )
+    if( real_scenecut && h->param.i_bframe ) //允许Ｂ帧，且 real_scenecut
     {
         int origmaxp1 = p0 + 1;
         /* Look ahead to avoid coding short flashes as scenecuts. */
-        if( h->param.i_bframe_adaptive == X264_B_ADAPT_TRELLIS )
+        if( h->param.i_bframe_adaptive == X264_B_ADAPT_TRELLIS )    //使用　viterbi 最优路径进行Ｂ帧自适应选择
             /* Don't analyse any more frames than the trellis would have covered. */
             origmaxp1 += h->param.i_bframe;
         else
@@ -1444,9 +1495,11 @@ static int scenecut( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **frames, in
         /* Where A and B are scenes: AAAAAABBBAAAAAA
          * If BBB is shorter than (maxp1-p0), it is detected as a flash
          * and not considered a scenecut. */
+        //当Ｂ场景的长度小于　maxp1-p0,那么将被视为一个场景闪现，不被考虑成场景切换
         for( int curp1 = p1; curp1 <= maxp1; curp1++ )
-            if( !scenecut_internal( h, a, frames, p0, curp1, 0 ) )
+            if( !scenecut_internal( h, a, frames, p0, curp1, 0 ) ) //若curp1相对于p0没有场景切换
                 /* Any frame in between p0 and cur_p1 cannot be a real scenecut. */
+                //从p0到当前curp1内的所有帧都不可作为一个场景切换
                 for( int i = curp1; i > p0; i-- )
                     frames[i]->b_scenecut = 0;
 
@@ -1455,6 +1508,8 @@ static int scenecut( x264_t *h, x264_mb_analysis_t *a, x264_frame_t **frames, in
          * detected as flashes and not considered scenecuts.
          * Instead, the first F frame becomes a scenecut.
          * If the video ends before F, no frame becomes a scenecut. */
+        //若每一个场景BB/CC/DD/EE都短于maxp1 - p0,那么它们都被视为一个场景闪现，
+        //不考虑成场景切换，第一个 F 帧被视为场景切换
         for( int curp0 = p0; curp0 <= maxp1; curp0++ )
             if( origmaxp1 > i_max_search || (curp0 < maxp1 && scenecut_internal( h, a, frames, curp0, maxp1, 0 )) )
                 /* If cur_p0 is the p0 of a scenecut, it cannot be the p1 of a scenecut. */
